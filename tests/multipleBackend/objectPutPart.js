@@ -124,7 +124,7 @@ errorDescription) {
     });
 }
 
-describe('objectPutPart API with multiple backends', () => {
+describe.only('objectPutPart API with multiple backends', () => {
     afterEach(() => {
         cleanup();
     });
@@ -187,13 +187,18 @@ describe('objectPutPart API with multiple backends', () => {
     });
 
     it('should put a part to AWS based on bucket location', done => {
-        putPart('aws-test', null, null, 'localhost', uploadId => {
+        putPart('aws-test', null, null, 'localhost',
+        (uploadId) => {
             assert.deepStrictEqual(ds, []);
-            s3.abortMultipartUpload({ Bucket: 'multitester444',
-            Key: objectName, UploadId: uploadId }, err => {
-                assert.equal(err, null, `Error aborting MPU: ${err}. ` +
-                `You must abort MPU with upload ID ${uploadId} manually.`);
-                done();
+            const params = { Bucket: 'multitester444', Key: objectName,
+            UploadId: uploadId };
+            s3.listParts(params, (err, data) => {
+                assert.equal(err, null, `Error listing parts: ${err}`);
+                s3.abortMultipartUpload(params, err => {
+                    assert.equal(err, null, `Error aborting MPU: ${err}. ` +
+                    `You must abort MPU with upload ID ${uploadId} manually.`);
+                    done();
+                });
             });
         });
     });
