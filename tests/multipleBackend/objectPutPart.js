@@ -2,6 +2,7 @@ import assert from 'assert';
 import async from 'async';
 import crypto from 'crypto';
 import { parseString } from 'xml2js';
+import AWS from 'aws-sdk';
 
 import { cleanup, DummyRequestLogger, makeAuthInfo } from '../unit/helpers';
 import { ds } from '../../lib/data/in_memory/backend';
@@ -11,6 +12,8 @@ import objectPutPart from '../../lib/api/objectPutPart';
 import DummyRequest from '../unit/DummyRequest';
 import { metadata } from '../../lib/metadata/in_memory/metadata';
 import constants from '../../constants';
+
+const s3 = new AWS.S3();
 
 const splitter = constants.splitter;
 const log = new DummyRequestLogger();
@@ -116,7 +119,7 @@ errorDescription) {
                                                 .get(partKey)['content-md5'];
             assert.strictEqual(keysInMPUkeyMap.length, 2);
             assert.strictEqual(partETag, calculatedHash);
-            cb();
+            cb(testUploadId);
         });
     });
 }
@@ -150,9 +153,14 @@ describe('objectPutPart API with multiple backends', () => {
     });
 
     it('should put a part to AWS based on mpu location', done => {
-        putPart('file', 'aws-test', null, 'localhost', () => {
+        putPart('file', 'aws-test', null, 'localhost', uploadId => {
             assert.deepStrictEqual(ds, []);
-            done();
+            s3.abortMultipartUpload({ Bucket: 'multitester444',
+            Key: objectName, UploadId: uploadId }, err => {
+                assert.equal(err, null, `Error aborting MPU: ${err}. ` +
+                `You must abort MPU with upload ID ${uploadId} manually.`);
+                done();
+            });
         });
     });
 
@@ -179,9 +187,14 @@ describe('objectPutPart API with multiple backends', () => {
     });
 
     it('should put a part to AWS based on bucket location', done => {
-        putPart('aws-test', null, null, 'localhost', () => {
+        putPart('aws-test', null, null, 'localhost', uploadId => {
             assert.deepStrictEqual(ds, []);
-            done();
+            s3.abortMultipartUpload({ Bucket: 'multitester444',
+            Key: objectName, UploadId: uploadId }, err => {
+                assert.equal(err, null, `Error aborting MPU: ${err}. ` +
+                `You must abort MPU with upload ID ${uploadId} manually.`);
+                done();
+            });
         });
     });
 

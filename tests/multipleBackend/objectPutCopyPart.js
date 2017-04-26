@@ -1,5 +1,6 @@
 import assert from 'assert';
 import async from 'async';
+import AWS from 'aws-sdk';
 import { parseString } from 'xml2js';
 
 import { cleanup, DummyRequestLogger, makeAuthInfo } from '../unit/helpers';
@@ -12,6 +13,8 @@ import DummyRequest from '../unit/DummyRequest';
 import { metadata } from '../../lib/metadata/in_memory/metadata';
 import constants from '../../constants';
 
+const s3 = new AWS.S3();
+
 const splitter = constants.splitter;
 const log = new DummyRequestLogger();
 const canonicalID = 'accessKey1';
@@ -23,6 +26,7 @@ const sourceObjName = 'supersourceobject';
 const destObjName = 'copycatobject';
 const mpuBucket = `${constants.mpuBucketPrefix}${bucketName}`;
 const body = Buffer.from('I am a body', 'utf8');
+
 function copyPutPart(bucketLoc, mpuLoc, srcObjLoc, requestHost, cb,
 errorDescription) {
     const post = bucketLoc ? '<?xml version="1.0" encoding="UTF-8"?>' +
@@ -116,13 +120,13 @@ errorDescription) {
         return objectPutCopyPart(authInfo, copyPartReq,
             bucketName, sourceObjName, undefined, log, err => {
                 assert.strictEqual(err, null);
-                cb();
+                cb(testUploadId);
             });
     });
 }
 
 describe('ObjectCopyPutPart API with multiple backends', () => {
-    beforeEach(() => {
+    afterEach(() => {
         cleanup();
     });
 
@@ -151,9 +155,14 @@ describe('ObjectCopyPutPart API with multiple backends', () => {
     });
 
     it('should copy part to AWS based on mpu location', done => {
-        copyPutPart('mem', 'aws-test', null, 'localhost', () => {
+        copyPutPart('mem', 'aws-test', null, 'localhost', uploadId => {
             assert.strictEqual(ds.length, 2);
-            done();
+            s3.abortMultipartUpload({ Bucket: 'multitester444',
+            Key: destObjName, UploadId: uploadId }, err => {
+                assert.equal(err, null, `Error aborting MPU: ${err}. ` +
+                `You must abort MPU with upload ID ${uploadId} manually.`);
+                done();
+            });
         });
     });
 
@@ -177,9 +186,14 @@ describe('ObjectCopyPutPart API with multiple backends', () => {
     });
 
     it('should copy part to AWS based on bucket location', done => {
-        copyPutPart('aws-test', null, null, 'localhost', () => {
+        copyPutPart('aws-test', null, null, 'localhost', uploadId => {
             assert.deepStrictEqual(ds, []);
-            done();
+            s3.abortMultipartUpload({ Bucket: 'multitester444',
+            Key: destObjName, UploadId: uploadId }, err => {
+                assert.equal(err, null, `Error aborting MPU: ${err}. ` +
+                `You must abort MPU with upload ID ${uploadId} manually.`);
+                done();
+            });
         });
     });
 
