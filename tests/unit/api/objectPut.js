@@ -6,7 +6,8 @@ import assert from 'assert';
 import bucketPut from '../../../lib/api/bucketPut';
 import bucketPutACL from '../../../lib/api/bucketPutACL';
 import bucketPutVersioning from '../../../lib/api/bucketPutVersioning';
-import { cleanup, DummyRequestLogger, makeAuthInfo } from '../helpers';
+import { cleanup, DummyRequestLogger, makeAuthInfo, versioningTestUtils }
+    from '../helpers';
 import { ds } from '../../../lib/data/in_memory/backend';
 import metadata from '../metadataswitch';
 import objectPut from '../../../lib/api/objectPut';
@@ -25,39 +26,14 @@ const testPutBucketRequest = new DummyRequest({
     headers: { host: `${bucketName}.s3.amazonaws.com` },
     url: '/',
 });
-function _createBucketPutVersioningReq(status) {
-    const request = {
-        bucketName,
-        headers: {
-            host: `${bucketName}.s3.amazonaws.com`,
-        },
-        url: '/?versioning',
-        query: { versioning: '' },
-    };
-    const xml = '<VersioningConfiguration ' +
-    'xmlns="http://s3.amazonaws.com/doc/2006-03-01/">' +
-    `<Status>${status}</Status>` +
-    '</VersioningConfiguration>';
-    request.post = xml;
-    return request;
-}
 
 const objectName = 'objectName';
 
-function _createPutObjectRequest(body) {
-    const params = {
-        bucketName,
-        namespace,
-        objectKey: objectName,
-        headers: {},
-        url: `/${bucketName}/${objectName}`,
-    };
-    return new DummyRequest(params, body);
-}
-
 let testPutObjectRequest;
-const enableVersioningRequest = _createBucketPutVersioningReq('Enabled');
-const suspendVersioningRequest = _createBucketPutVersioningReq('Suspended');
+const enableVersioningRequest =
+    versioningTestUtils.createBucketPutVersioningReq(bucketName, 'Enabled');
+const suspendVersioningRequest =
+    versioningTestUtils.createBucketPutVersioningReq(bucketName, 'Suspended');
 
 function testAuth(bucketOwner, authUser, bucketPutReq, log, cb) {
     bucketPut(bucketOwner, bucketPutReq, log, () => {
@@ -268,30 +244,21 @@ describe('objectPut API with versioning', () => {
         cleanup();
     });
 
-    function _assertDataStoreValues(expectedValues) {
-        assert.strictEqual(ds.length, expectedValues.length + 1);
-        for (let i = 0, j = 1; i < expectedValues.length; i++, j++) {
-            if (expectedValues[i] === undefined) {
-                assert.strictEqual(ds[j], expectedValues[i]);
-            } else {
-                assert.deepStrictEqual(ds[j].value, expectedValues[i]);
-            }
-        }
-    }
+    const objData = ['foo0', 'foo1', 'foo2'].map(str =>
+        Buffer.from(str, 'utf8'));
+    const testPutObjectRequests = objData.map(data => versioningTestUtils
+        .createPutObjectRequest(bucketName, objectName, data));
 
     it('should delete latest version when creating new null version ' +
     'if latest version is null version', done => {
-        const objData = ['foo0', 'foo1', 'foo2'].map(str =>
-            Buffer.from(str, 'utf8'));
-        const testPutObjectRequests = objData.map(data =>
-            _createPutObjectRequest(data));
         async.series([
             callback => bucketPut(authInfo, testPutBucketRequest, log,
                 callback),
             // putting null version by putting obj before versioning configured
             callback => objectPut(authInfo, testPutObjectRequests[0], undefined,
                 log, err => {
-                    _assertDataStoreValues(objData.slice(0, 1));
+                    versioningTestUtils.assertDataStoreValues(ds,
+                        objData.slice(0, 1));
                     callback(err);
                 }),
             callback => bucketPutVersioning(authInfo, suspendVersioningRequest,
@@ -304,7 +271,8 @@ describe('objectPut API with versioning', () => {
                     process.nextTick(() => {
                         // old null version should be deleted
                         objData[0] = undefined;
-                        _assertDataStoreValues(objData.slice(0, 2));
+                        versioningTestUtils.assertDataStoreValues(ds,
+                            objData.slice(0, 2));
                         callback(err);
                     });
                 }),
@@ -314,24 +282,19 @@ describe('objectPut API with versioning', () => {
                     process.nextTick(() => {
                         // old null version should be deleted
                         objData[1] = undefined;
-                        _assertDataStoreValues(objData.slice(0, 3));
+                        versioningTestUtils.assertDataStoreValues(ds,
+                            objData.slice(0, 3));
                         callback(err);
                     });
                 }),
-        ], err => {
-            if (err) {
-                return done(err);
-            }
-            return done();
-        });
+        ], done);
     });
 
     describe('when null version is not the latest version', () => {
         const objData = ['foo0', 'foo1', 'foo2'].map(str =>
             Buffer.from(str, 'utf8'));
-        const testPutObjectRequests = objData.map(data =>
-            _createPutObjectRequest(data));
-
+        const testPutObjectRequests = objData.map(data => versioningTestUtils
+            .createPutObjectRequest(bucketName, objectName, data));
         beforeEach(done => {
             async.series([
                 callback => bucketPut(authInfo, testPutBucketRequest, log,
@@ -350,7 +313,8 @@ describe('objectPut API with versioning', () => {
                 if (err) {
                     return done(err);
                 }
-                _assertDataStoreValues(objData.slice(0, 2));
+                versioningTestUtils.assertDataStoreValues(ds,
+                    objData.slice(0, 2));
                 return done();
             });
         });
@@ -365,7 +329,8 @@ describe('objectPut API with versioning', () => {
                     // new null version
                     expectedValues[0] = undefined;
                     process.nextTick(() => {
-                        _assertDataStoreValues(expectedValues);
+                        versioningTestUtils.assertDataStoreValues(ds,
+                            expectedValues);
                         done(err);
                     });
                 });

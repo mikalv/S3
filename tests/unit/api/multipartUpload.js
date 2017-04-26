@@ -10,7 +10,8 @@ import bucketPutVersioning from '../../../lib/api/bucketPutVersioning';
 import objectPut from '../../../lib/api/objectPut';
 import completeMultipartUpload from '../../../lib/api/completeMultipartUpload';
 import constants from '../../../constants';
-import { cleanup, DummyRequestLogger, makeAuthInfo } from '../helpers';
+import { cleanup, DummyRequestLogger, makeAuthInfo, versioningTestUtils }
+    from '../helpers';
 import { ds } from '../../../lib/data/in_memory/backend';
 import initiateMultipartUpload from '../../../lib/api/initiateMultipartUpload';
 import { metadata } from '../../../lib/metadata/in_memory/metadata';
@@ -1672,49 +1673,13 @@ describe('complete mpu with versioning', () => {
     const objData = ['foo0', 'foo1', 'foo2'].map(str =>
         Buffer.from(str, 'utf8'));
 
-    function _createBucketPutVersioningReq(status) {
-        const request = {
-            bucketName,
-            headers: {
-                host: `${bucketName}.s3.amazonaws.com`,
-            },
-            url: '/?versioning',
-            query: { versioning: '' },
-        };
-        const xml = '<VersioningConfiguration ' +
-        'xmlns="http://s3.amazonaws.com/doc/2006-03-01/">' +
-        `<Status>${status}</Status>` +
-        '</VersioningConfiguration>';
-        request.post = xml;
-        return request;
-    }
-
-    function _createPutObjectRequest(body) {
-        const params = {
-            bucketName,
-            namespace,
-            objectKey,
-            headers: {},
-            url: `/${bucketName}/${objectKey}`,
-        };
-        return new DummyRequest(params, body);
-    }
-
-    const enableVersioningRequest = _createBucketPutVersioningReq('Enabled');
-    const suspendVersioningRequest = _createBucketPutVersioningReq('Suspended');
+    const enableVersioningRequest =
+        versioningTestUtils.createBucketPutVersioningReq(bucketName, 'Enabled');
+    const suspendVersioningRequest = versioningTestUtils
+        .createBucketPutVersioningReq(bucketName, 'Suspended');
     const testPutObjectRequests = objData.slice(0, 2).map(data =>
-        _createPutObjectRequest(data));
-
-    function _assertDataStoreValues(expectedValues) {
-        assert.strictEqual(ds.length, expectedValues.length + 1);
-        for (let i = 0, j = 1; i < expectedValues.length; i++, j++) {
-            if (expectedValues[i] === undefined) {
-                assert.strictEqual(ds[j], expectedValues[i]);
-            } else {
-                assert.deepStrictEqual(ds[j].value, expectedValues[i]);
-            }
-        }
-    }
+        versioningTestUtils.createPutObjectRequest(bucketName, objectKey,
+            data));
 
     before(done => {
         cleanup();
@@ -1735,7 +1700,7 @@ describe('complete mpu with versioning', () => {
             if (err) {
                 return done(err);
             }
-            _assertDataStoreValues(objData.slice(0, 2));
+            versioningTestUtils.assertDataStoreValues(ds, objData.slice(0, 2));
             return done();
         });
     });
@@ -1772,7 +1737,7 @@ describe('complete mpu with versioning', () => {
             // old null version should be deleted now
             expectedValues[0] = undefined;
             process.nextTick(() => {
-                _assertDataStoreValues(expectedValues);
+                versioningTestUtils.assertDataStoreValues(ds, expectedValues);
                 done(err);
             });
         });
