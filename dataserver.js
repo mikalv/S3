@@ -5,7 +5,8 @@ const arsenal = require('arsenal');
 const config = require('./lib/Config.js').default;
 const logger = require('./lib/utilities/logger').logger;
 
-if (config.backends.data === 'file') {
+if (config.backends.data === 'file' ||
+    config.backends.data === 'multiple') {
     /**
      * Configure the file paths for data if using the file
      * backend. If no path provided, uses data at the root of
